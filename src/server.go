@@ -1,22 +1,31 @@
 package main
 
 import (
+	"bytes"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
-	gitee_utils "github.com/TECH4DX/webhook-adapter/src/gitee-utils"
+	"os"
+
 	"gitee.com/openeuler/go-gitee/gitee"
+	gitee_utils "github.com/TECH4DX/webhook-adapter/src/gitee-utils"
+	"github.com/google/go-github/github"
+	// "github.com/go-playground/webhooks/github"
 )
 
 func ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Webhook adapter version: 0.55 \n")
-	fmt.Fprint(w, "Webhook received !!! \n")
+	fmt.Fprint(w, "Webhook adapter version: 0.10 \n")
+	fmt.Fprint(w, "Webhook received! \n")
+
 	eventType, _, payload, ok, statusCode := gitee_utils.ValidateWebhook(w, r)
 	if !ok {
-		fmt.Fprint(w, "Validate webhook failed, status code: %d", statusCode)
+		fmt.Fprint(w, "Validate webhook failed, status code: ", statusCode)
 		return
 	}
-	fmt.Fprint(w, "Validate webhook finished, status code: %d", statusCode)
+	fmt.Fprint(w, "Validate webhook finished, status code: ", statusCode)
 
 	switch eventType {
 	case "Issue Hook":
@@ -67,19 +76,93 @@ func handleCommentEvent(i *gitee.NoteEvent) {
 }
 
 func handlePullRequestEvent(i *gitee.PullRequestEvent) {
+	// TODO: Implement pull request event adapter
 	return
 }
 
 func handlePushEvent(i *gitee.PushEvent) {
+	var g github.PushEvent
+	apiUrl := os.Getenv("REMOTE_WEBHOOK_URL")
+	pushEventAdapter(i, &g)
+	res, err := sentEventWebhook(&g, apiUrl)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(res)
 	return
 }
 
 func handleIssueCommentEvent(i *gitee.NoteEvent) {
+	// TODO: Implement issue comment event adapter
 	return
 }
 
 func handlePRCommentEvent(i *gitee.NoteEvent) {
+	// TODO: Implement PR comment event adapter
 	return
+}
+
+func pushEventAdapter(i *gitee.PushEvent, g *github.PushEvent) {
+	// TODO: make more attributes consistent
+	// *(g.PushID) = int64(i.Pusher.Id)
+	g.Head = &i.HeadCommit.Message
+	g.Ref = i.Ref
+	g.Before = i.Before
+	g.After = i.After
+	g.Created = i.Created
+	g.Deleted = i.Deleted
+	g.Compare = i.Compare
+}
+
+func sentEventWebhook(g *github.PushEvent, apiURL string) (string, error) {
+	var retries = 3
+	var _, err = json.Marshal(g)
+	if err != nil {
+		return "Bad Github Push Event!", err
+	}
+	post, err := ioutil.ReadFile("./src/payload.json")
+	if err != nil {
+		fmt.Println("Cannot read json file")
+	}
+	var payload = []byte(post)
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payload))
+	req.Close = true
+	if err != nil {
+		return "Bad Http Request!", err
+	}
+
+	header := http.Header{
+		"User-Agent":                             []string{"GitHub-Hookshot/ded62e5"},
+		"X-GitHub-Delivery":                      []string{"bbc52522-b0cf-11ec-803b-651ed8308458"},
+		"X-Github-Event":                         []string{"push"},
+		"X-GitHub-Hook-ID":                       []string{"350653200"},
+		"X-GitHub-Hook-Installation-Target-ID":   []string{"475749688"},
+		"X-GitHub-Hook-Installation-Target-Type": []string{"repository"},
+	}
+	req.Header = header
+	req.Header.Set("Content-Type", "application/json")
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	client := &http.Client{Transport: tr}
+
+	for retries > 0 {
+		resp, err := client.Do(req)
+		if err != nil {
+			retries--
+			fmt.Printf("POST action failed, get response:\n %+v , \n get error:%+v \n retring...\n", resp, err)
+		} else {
+			defer resp.Body.Close()
+			fmt.Println("Response Status:", resp.Status)
+			fmt.Println("Response Header:", resp.Header)
+			body, _ := ioutil.ReadAll(resp.Body)
+			fmt.Println("Response Body", string(body))
+			return "POST Succeed!", nil
+		}
+	}
+	return "POST failed after retries!", errors.New("post failed")
 }
 
 func checkRepository(payload []byte, rep *gitee.ProjectHook) error {
@@ -91,5 +174,5 @@ func checkRepository(payload []byte, rep *gitee.ProjectHook) error {
 
 func main() {
 	http.HandleFunc("/", ServeHTTP)
-	http.ListenAndServe(":8008", nil)
+	http.ListenAndServe(":9109", nil)
 }

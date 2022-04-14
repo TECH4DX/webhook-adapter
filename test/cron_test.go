@@ -3,7 +3,7 @@ package test
 import (
 	"encoding/csv"
 	"fmt"
-	"gitee_utils"
+	gitee_utils "github.com/TECH4DX/webhook-adapter/src/gitee-utils"
 	"github.com/robfig/cron/v3"
 	"io/ioutil"
 	"net/http"
