@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-adapter
+spec:
+  selector:
+    matchLabels:
+      app: webhook-adapter
+  replicas: 1 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: webhook-adapter
+    spec:
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: workingnode
+      #           operator: In
+      #           values: ["true"]
+      containers:
+      - name: webhook-adapter
+        image: guoqiangqi/webhook-adapter:v1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: REMOTE_WEBHOOK_URL
+          value: "https://argocd.example.com/api/webhook"
+
+        volumeMounts:
+          - name: log-volume
+            #mountPropagation: "Bidirectional"
+            mountPath: "/app/src/log/"
+
+      volumes:
+      - name: log-volume
+        hostPath:
+          path: /webhook-adapter-logs/prod
+          type: DirectoryOrCreate
