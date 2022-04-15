@@ -12,8 +12,8 @@ import (
 
 	"gitee.com/openeuler/go-gitee/gitee"
 	gitee_utils "github.com/TECH4DX/webhook-adapter/src/gitee-utils"
-	"github.com/google/go-github/github"
-	// "github.com/go-playground/webhooks/github"
+	"gopkg.in/go-playground/webhooks.v5/github"
+	// "github.com/google/go-github/github"
 )
 
 func ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -81,10 +81,10 @@ func handlePullRequestEvent(i *gitee.PullRequestEvent) {
 }
 
 func handlePushEvent(i *gitee.PushEvent) {
-	var g github.PushEvent
-	apiUrl := os.Getenv("REMOTE_WEBHOOK_URL")
+	var g github.PushPayload
+	apiURL := os.Getenv("REMOTE_WEBHOOK_URL")
 	pushEventAdapter(i, &g)
-	res, err := sentEventWebhook(&g, apiUrl)
+	res, err := sentEventWebhook(&g, apiURL)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -102,28 +102,21 @@ func handlePRCommentEvent(i *gitee.NoteEvent) {
 	return
 }
 
-func pushEventAdapter(i *gitee.PushEvent, g *github.PushEvent) {
+func pushEventAdapter(i *gitee.PushEvent, g *github.PushPayload) {
 	// TODO: make more attributes consistent
 	// *(g.PushID) = int64(i.Pusher.Id)
-	g.Head = &i.HeadCommit.Message
-	g.Ref = i.Ref
-	g.Before = i.Before
-	g.After = i.After
-	g.Created = i.Created
-	g.Deleted = i.Deleted
-	g.Compare = i.Compare
+	g.Repository.HTMLURL = i.Repository.HtmlUrl
+	g.Ref = *i.Ref
+	g.Repository.DefaultBranch = i.Project.DefaultBranch
 }
 
-func sentEventWebhook(g *github.PushEvent, apiURL string) (string, error) {
+func sentEventWebhook(g *github.PushPayload, apiURL string) (string, error) {
 	var retries = 3
-	var _, err = json.Marshal(g)
+	var post, err = json.Marshal(g)
 	if err != nil {
 		return "Bad Github Push Event!", err
 	}
-	post, err := ioutil.ReadFile("./src/payload.json")
-	if err != nil {
-		fmt.Println("Cannot read json file")
-	}
+
 	var payload = []byte(post)
 	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payload))
 	req.Close = true
@@ -132,12 +125,7 @@ func sentEventWebhook(g *github.PushEvent, apiURL string) (string, error) {
 	}
 
 	header := http.Header{
-		"User-Agent":                             []string{"GitHub-Hookshot/ded62e5"},
-		"X-GitHub-Delivery":                      []string{"bbc52522-b0cf-11ec-803b-651ed8308458"},
-		"X-Github-Event":                         []string{"push"},
-		"X-GitHub-Hook-ID":                       []string{"350653200"},
-		"X-GitHub-Hook-Installation-Target-ID":   []string{"475749688"},
-		"X-GitHub-Hook-Installation-Target-Type": []string{"repository"},
+		"X-Github-Event": []string{"push"},
 	}
 	req.Header = header
 	req.Header.Set("Content-Type", "application/json")
