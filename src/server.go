@@ -162,5 +162,5 @@ func checkRepository(payload []byte, rep *gitee.ProjectHook) error {
 
 func main() {
 	http.HandleFunc("/", ServeHTTP)
-	http.ListenAndServe(":9109", nil)
+	http.ListenAndServe(":8080", nil)
 }
